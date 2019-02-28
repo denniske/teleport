@@ -18,6 +18,7 @@ package client
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -218,4 +219,37 @@ func (k *Key) AsAuthMethod() (ssh.AuthMethod, error) {
 		return nil, trace.Wrap(err)
 	}
 	return NewAuthMethodForCert(signer), nil
+}
+
+func (k *Key) ValidateAlgorithm() error {
+	key, _, _, _, err := ssh.ParseAuthorizedKey(k.Cert)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	cert, ok := key.(*ssh.Certificate)
+	if !ok {
+		return trace.Wrap("only certificates supported")
+	}
+
+	if !validateKeyAlgorithm(cert.Key) {
+		return trace.BadParameter("invalid key algorithm for certificate")
+	}
+	if !validateKeyAlgorithm(cert.SignatureKey) {
+		return trace.BadParameter("invalid key algorithm for certificate signer")
+	}
+
+	return nil
+}
+
+func validateKeyAlgorithm(key ssh.PublicKey) error {
+	k, ok := key.(*rsa.PublicKey)
+	if !ok {
+		return false
+	}
+
+	if k.N.BitLen() != defaults.RSABits {
+		return false
+	}
+
+	return true
 }
